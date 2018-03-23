@@ -1,0 +1,73 @@
+PUT _xpack/watcher/watch/cpu_watch
+{
+  "trigger": {
+    "schedule": {
+      "interval": "10s"
+    }
+  },
+  "input": {
+    "search": {
+      "request": {
+        "indices": [
+          "metricbeat*"
+        ],
+        "body": {
+          "size": 0,
+          "aggs": {
+            "max_cpu": {
+              "max": {
+                "field": "system.process.cpu.total.pct"
+              }
+            }
+          },
+          "query": {
+            "bool": {
+              "must": [
+                {
+                  "range": {
+                    "@timestamp": {
+                      "gte": "now-10s"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "condition": {
+    "script": {
+      "lang": "painless",
+      "inline": "if (ctx.payload.aggregations.max_cpu.value > 0.20) { return true; } return false;"
+    }
+  },
+  "actions": {
+    "log": {
+      "transform": {},
+      "logging": {
+        "text": "Max CPU alert executed : {{ctx}}"
+      }
+    },
+      "send_email": {
+      "email": {
+        "to": "nrkreddy94@gmail.com",
+        "subject": "Max CPU alert watcher notification",
+        "body": "{{ctx.payload.hits.total}} error logs found\nMax CPU alert executed : {{ctx}}"
+      }
+    },
+    "index_payload": {
+      "transform": {
+        "script": {
+          "lang": "painless",
+          "inline": "Map result = new HashMap(); result['@timestamp'] = ctx.trigger.triggered_time; result['cpu'] = ctx.payload.aggregations.max_cpu.value; return result;"
+        }
+      },
+      "index": {
+        "index": "cpu-anomaly-alerts",
+        "doc_type": "alert"
+      }
+    }
+  }
+}
